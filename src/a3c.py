@@ -8,6 +8,7 @@ import scipy.signal
 import threading
 import distutils.version
 from constants import constants
+from utils import saveToFlat
 use_tf12_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('0.12.0')
 
 def discount(x, gamma):
@@ -88,6 +89,8 @@ class PartialRollout(object):
         self.features += [features]
         if self.unsup:
             self.bonuses += [bonus]
+            # # What do you mean by end state.
+            # Evaluate the state using the "Curiosity" of the last state
             self.end_state = end_state
 
     def extend(self, other):
@@ -158,7 +161,7 @@ def env_runner(env, policy, num_local_steps, summary_writer, render, predictor,
     length = 0
     rewards = 0
     values = 0
-    if predictor is not None:
+    if predictor is not None: # predict the intrinsic reward
         ep_bonus = 0
         life_bonus = 0
 
@@ -263,9 +266,9 @@ class A3C(object):
                 if self.unsup:
                     with tf.variable_scope("predictor"):
                         if 'state' in unsupType:
-                            self.ap_network = StatePredictor(env.observation_space.shape, numaction, designHead, unsupType)
+                            self.ap_network = StatePredictor("sp", env.observation_space.shape, numaction, designHead, unsupType)
                         else:
-                            self.ap_network = StateActionPredictor(env.observation_space.shape, numaction, designHead)
+                            self.ap_network = StateActionPredictor("sap", env.observation_space.shape, numaction, designHead)
 
         with tf.device(worker_device):
             with tf.variable_scope("local"):
@@ -274,9 +277,11 @@ class A3C(object):
                 if self.unsup:
                     with tf.variable_scope("predictor"):
                         if 'state' in unsupType:
-                            self.local_ap_network = predictor = StatePredictor(env.observation_space.shape, numaction, designHead, unsupType)
+                            self.local_ap_network = predictor = StatePredictor("sp", env.observation_space.shape, numaction,
+                                                                                designHead, unsupType)
                         else:
-                            self.local_ap_network = predictor = StateActionPredictor(env.observation_space.shape, numaction, designHead)
+                            self.local_ap_network = predictor = StateActionPredictor("sap", env.observation_space.shape,
+                                                                                        numaction, designHead)
 
             # Computing a3c loss: https://arxiv.org/abs/1506.02438
             self.ac = tf.placeholder(tf.float32, [None, numaction], name="ac")
@@ -421,6 +426,12 @@ class A3C(object):
             fetches = [self.summary_op, self.train_op, self.global_step]
         else:
             fetches = [self.train_op, self.global_step]
+
+        if self.unsup and  self.local_steps % 10001 == 0:
+            import os
+            if not os.path.exists("checkpoints"):
+                os.mkdir("checkpoints")
+            saveToFlat(self.local_ap_network.get_variables(), "checkpoints/model_%i.p" % {self.local_steps//10001})
 
         feed_dict = {
             self.local_network.x: batch.si,
