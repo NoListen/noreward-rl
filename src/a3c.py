@@ -431,7 +431,7 @@ class A3C(object):
             import os
             if not os.path.exists("checkpoints"):
                 os.mkdir("checkpoints")
-            saveToFlat(self.local_ap_network.get_variables(), "checkpoints/model_%i.p" % {self.local_steps//10001})
+            saveToFlat(self.local_ap_network.get_variables(), "checkpoints/model_%i.p" % (self.local_steps//10001))
 
         feed_dict = {
             self.local_network.x: batch.si,
